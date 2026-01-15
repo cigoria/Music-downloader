@@ -1,0 +1,7 @@
+textual
+spotipy
+yt-dlp
+inquirer
+requests
+musicbrainzngs
+mutagen
