@@ -164,7 +164,7 @@ def get_inquirer_selection(tracks):
         return None
 
 
-def update_mp3_metadata(filepath):
+def update_mp3_metadata(filepath, auto_mode=False):
     """
     Frissíti egy adott MP3 fájl ID3 tagjeit, beleértve a borítóképet is.
     """
@@ -189,6 +189,9 @@ def update_mp3_metadata(filepath):
     if len(track_data_list) == 1:
         selected_track = track_data_list[0]
         print(f"✅ Egyetlen találat: {selected_track['artist']} - {selected_track['title']}, automatikus kiválasztás.")
+    elif auto_mode and track_data_list:
+        selected_track = track_data_list[0]
+        print(f"🤖 Automatikus mód: Első találat kiválasztva: {selected_track['artist']} - {selected_track['title']}")
     else:
         selected_track = get_inquirer_selection(track_data_list)
 
@@ -252,6 +255,7 @@ def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(script_dir, "config.json")
     target_dir = script_dir
+    auto_mode = "--auto" in sys.argv
 
     if os.path.exists(config_path):
         try:
@@ -267,15 +271,18 @@ def main():
         print(f"❌ A megadott mappa nem létezik: {target_dir}")
         return
 
-    mp3_files = [f for f in os.listdir(target_dir) if f.lower().endswith('.mp3')]
+    mp3_files = []
+    for root, _, files in os.walk(target_dir):
+        for f in files:
+            if f.lower().endswith('.mp3'):
+                mp3_files.append(os.path.join(root, f))
 
     if not mp3_files:
         print("🤷 Nincs MP3 fájl a megadott mappában.")
         return
 
-    for filename in mp3_files:
-        filepath = os.path.join(target_dir, filename)
-        update_mp3_metadata(filepath)
+    for filepath in mp3_files:
+        update_mp3_metadata(filepath, auto_mode=auto_mode)
 
     print("\n--- A munka befejeződött! ---")
 

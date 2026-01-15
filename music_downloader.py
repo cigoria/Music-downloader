@@ -1,4 +1,5 @@
 import os
+import sys
 import subprocess
 import threading
 import json
@@ -326,6 +327,7 @@ class MusicDownloaderApp(App):
             item["status"] = "done" if success else "error"
             self.refresh_queue_ui()
 
+        self.run_post_processing()
         self.is_downloading = False
         self.log_msg("All tasks completed.", "SYSTEM")
 
@@ -352,6 +354,44 @@ class MusicDownloaderApp(App):
                 self.call_from_thread(self.query_one("#speed_label", Label).update, f"Speed: {s} | Progress: {p}%")
         proc.wait()
         return proc.returncode == 0
+
+    def run_post_processing(self):
+        """Futtatja a metadata frissítőt és szükség esetén a playlist generátort."""
+        self.log_msg("Starting post-processing...", "SYSTEM")
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+
+        # 1. Metadata frissítés futtatása (Auto módban)
+        try:
+            meta_script = os.path.join(script_dir, "metadata.py")
+            self.log_msg("Running metadata updater (Auto Mode)...", "PROCESS")
+            # -u kapcsoló a bufferelés kikapcsolásához, hogy lássuk a logokat
+            proc = subprocess.Popen([sys.executable, "-u", meta_script, "--auto"],
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            
+            for line in proc.stdout:
+                if line.strip():
+                    self.log_msg(f"[Meta] {line.strip()}", "META")
+            proc.wait()
+            self.log_msg("Metadata update finished.", "SUCCESS")
+        except Exception as e:
+            self.log_msg(f"Error running metadata.py: {e}", "ERROR")
+
+        # 2. Playlist generátor futtatása (csak ha volt mappás letöltés)
+        has_folder = any(item.get('folder') for item in self.download_queue if item.get('status') == 'done')
+        
+        if has_folder:
+            try:
+                pl_script = os.path.join(script_dir, "playlist-generator.py")
+                self.log_msg("Running playlist generator...", "PROCESS")
+                proc = subprocess.Popen([sys.executable, "-u", pl_script],
+                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                for line in proc.stdout:
+                    if line.strip():
+                        self.log_msg(f"[PL] {line.strip()}", "PL_GEN")
+                proc.wait()
+                self.log_msg("Playlist generation finished.", "SUCCESS")
+            except Exception as e:
+                self.log_msg(f"Error running playlist-generator.py: {e}", "ERROR")
 
 if __name__ == "__main__":
     app = MusicDownloaderApp()
