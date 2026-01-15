@@ -1,6 +1,19 @@
 import os
+import json
 
-BASE_DIR = "/home/zeteny/Zenék"
+script_dir = os.path.dirname(os.path.abspath(__file__))
+config_path = os.path.join(script_dir, "config.json")
+BASE_DIR = ""
+
+if os.path.exists(config_path):
+    with open(config_path, "r", encoding="utf-8") as f:
+        config = json.load(f)
+        BASE_DIR = config.get("path", "")
+
+if not BASE_DIR or not os.path.exists(BASE_DIR):
+    print("Hiba: Nem található érvényes útvonal a config.json-ban vagy a mappa nem létezik.")
+    exit(1)
+
 AUDIO_EXTENSIONS = {".mp3", ".flac", ".wav", ".ogg", ".m4a", ".aac"}
 
 for folder in os.listdir(BASE_DIR):

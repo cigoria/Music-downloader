@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import json
 import inquirer
 import requests
 from mutagen.id3 import ID3, TPE1, TIT2, TALB, TDRC, APIC
@@ -249,17 +250,31 @@ def update_mp3_metadata(filepath):
 def main():
     """A fő funkció."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(script_dir, "config.json")
+    target_dir = script_dir
 
-    print(f"🔍 Keresés indítása a mappában: {script_dir}")
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+                target_dir = config.get("path", script_dir)
+        except Exception as e:
+            print(f"⚠️ Hiba a config.json olvasásakor: {e}")
 
-    mp3_files = [f for f in os.listdir(script_dir) if f.lower().endswith('.mp3')]
+    print(f"🔍 Keresés indítása a mappában: {target_dir}")
+
+    if not os.path.exists(target_dir):
+        print(f"❌ A megadott mappa nem létezik: {target_dir}")
+        return
+
+    mp3_files = [f for f in os.listdir(target_dir) if f.lower().endswith('.mp3')]
 
     if not mp3_files:
-        print("🤷 Nincs MP3 fájl a szkript mappájában.")
+        print("🤷 Nincs MP3 fájl a megadott mappában.")
         return
 
     for filename in mp3_files:
-        filepath = os.path.join(script_dir, filename)
+        filepath = os.path.join(target_dir, filename)
         update_mp3_metadata(filepath)
 
     print("\n--- A munka befejeződött! ---")
