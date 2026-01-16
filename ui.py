@@ -269,7 +269,8 @@ class MusicDownloaderApp(App):
             if "soundcloud.com" in domain:
                 pass
             if "spotify.com" in domain:
-                pass
+                result_dict = spotify_get_initial(link)
+                self.download_queue.append(result_dict)
 
 
         except Exception as e:
