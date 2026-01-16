@@ -77,7 +77,6 @@ def get_cover_art_data(release_id):
     caa_url = f"http://coverartarchive.org/release/{release_id}/front"
 
     try:
-        # ❗ JAVÍTVA: A direktben beállított USER_AGENT_STRING használata
         headers = {'User-Agent': USER_AGENT_STRING}
         response = requests.get(caa_url, headers=headers, allow_redirects=True, timeout=10)
 
@@ -89,11 +88,11 @@ def get_cover_art_data(release_id):
         if response.status_code == 404:
             return None, None
 
-        print(f"   ⚠️ Sikertelen borítókép letöltés. HTTP Status: {response.status_code}")
+        print(f"Sikertelen borítókép letöltés. HTTP Status: {response.status_code}")
         return None, None
 
     except requests.exceptions.RequestException as e:
-        print(f"   ❌ Hiba a borítókép letöltésekor: {e}")
+        print(f"Hiba a borítókép letöltésekor: {e}")
         return None, None
 
 def get_inquirer_selection(tracks):
@@ -136,7 +135,7 @@ def get_inquirer_selection(tracks):
         choices.append((label, track))
 
     # Hozzáadjuk a kihagyás opciót
-    choices.append(('⏭️ Kihagyás (nem ír be semmit)', None))
+    choices.append(('Kihagyás (nem ír be semmit)', None))
 
     # 2. Létrehozzuk az Inquirer listát
     questions = [
@@ -174,29 +173,29 @@ def update_mp3_metadata(filepath, auto_mode=False):
     title_guess = extract_title_from_filename(filename)
 
     if not title_guess:
-        print(f"⚠️ Nem sikerült kinyerni a címet a fájlnévből. Keresés kihagyva.")
+        print(f"Nem sikerült kinyerni a címet a fájlnévből. Keresés kihagyva.")
         return
 
-    print(f"🔍 Online keresés indítása a címre: '{title_guess}'")
+    print(f"Online keresés indítása a címre: '{title_guess}'")
 
     track_data_list = search_tracks_by_title(title_guess)
 
     if not track_data_list:
-        print("❌ Nincs találat a MusicBrainz adatbázisban.")
+        print("Nincs találat a MusicBrainz adatbázisban.")
         return
 
     selected_track = None
     if len(track_data_list) == 1:
         selected_track = track_data_list[0]
-        print(f"✅ Egyetlen találat: {selected_track['artist']} - {selected_track['title']}, automatikus kiválasztás.")
+        print(f"Egyetlen találat: {selected_track['artist']} - {selected_track['title']}, automatikus kiválasztás.")
     elif auto_mode and track_data_list:
         selected_track = track_data_list[0]
-        print(f"🤖 Automatikus mód: Első találat kiválasztva: {selected_track['artist']} - {selected_track['title']}")
+        print(f"Automatikus mód: Első találat kiválasztva: {selected_track['artist']} - {selected_track['title']}")
     else:
         selected_track = get_inquirer_selection(track_data_list)
 
     if not selected_track:
-        print("⏭️ A fájl frissítése kihagyva.")
+        print("A fájl frissítése kihagyva.")
         return
 
     # 4. Tag-ek frissítése
@@ -218,7 +217,7 @@ def update_mp3_metadata(filepath, auto_mode=False):
 
         # --- Borítókép (APIC) beírása ---
         if selected_track['release_id']:
-            print("   🖼️ Keresés a borítóképre...")
+            print("Keresés a borítóképre...")
             image_data, mime_type = get_cover_art_data(selected_track['release_id'])
 
             if image_data and mime_type:
@@ -238,17 +237,17 @@ def update_mp3_metadata(filepath, auto_mode=False):
                         data=image_data   # A kép bináris adata
                     )
                 )
-                print("   ✅ Borítókép sikeresen beágyazva.")
+                print("Borítókép sikeresen beágyazva.")
             else:
-                print("   ❌ Borítókép nem található vagy beágyazása sikertelen.")
+                print("Borítókép nem található vagy beágyazása sikertelen.")
 
 
         # Mentés
         audio.save()
-        print(f"💾 A metadata sikeresen frissítve: {artist_text} - {selected_track['title']}.")
+        print(f"A metadata sikeresen frissítve: {artist_text} - {selected_track['title']}.")
 
     except Exception as e:
-        print(f"❌ Hiba történt a tag-ek beírása közben: {e}")
+        print(f"Hiba történt a tag-ek beírása közben: {e}")
 
 def main():
     """A fő funkció."""
@@ -263,12 +262,12 @@ def main():
                 config = json.load(f)
                 target_dir = config.get("path", script_dir)
         except Exception as e:
-            print(f"⚠️ Hiba a config.json olvasásakor: {e}")
+            print(f"Hiba a config.json olvasásakor: {e}")
 
-    print(f"🔍 Keresés indítása a mappában: {target_dir}")
+    print(f"Keresés indítása a mappában: {target_dir}")
 
     if not os.path.exists(target_dir):
-        print(f"❌ A megadott mappa nem létezik: {target_dir}")
+        print(f"A megadott mappa nem létezik: {target_dir}")
         return
 
     mp3_files = []
@@ -278,7 +277,7 @@ def main():
                 mp3_files.append(os.path.join(root, f))
 
     if not mp3_files:
-        print("🤷 Nincs MP3 fájl a megadott mappában.")
+        print("Nincs MP3 fájl a megadott mappában.")
         return
 
     for filepath in mp3_files:
