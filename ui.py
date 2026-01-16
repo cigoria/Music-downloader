@@ -10,7 +10,8 @@ from rich.text import Text
 from rich.markup import escape
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal
-from textual.widgets import Header, Footer, Button, Input, Label, TabbedContent, TabPane, RichLog, Select, DataTable, ProgressBar
+from textual.widgets import Header, Footer, Button, Input, Label, TabbedContent, TabPane, RichLog, Select, DataTable, \
+    ProgressBar
 
 from consts import CONFIG_FILE
 from metadata import MetadataManager
@@ -19,19 +20,20 @@ from downloader import *
 
 class MusicDownloaderApp(App):
     CSS = """
-    Screen { layout: vertical; }
-    .controls { height: auto; layout: horizontal; margin: 1 0; align: left middle; }
-    Button { margin-right: 1; }
-    #link_entry { margin-top: 1; }
-    DataTable { height: 1fr; border: solid $accent; }
-    RichLog { height: 1fr; border: solid $accent; }
-    .settings_field { margin-bottom: 1; }
-    .status_bar { height: auto; layout: horizontal; align: left middle; margin: 1 0; }
-    #overall_progress { width: 1fr; margin-left: 2; }
-    """
+        Screen { layout: vertical; }
+        .controls { height: auto; layout: horizontal; margin: 1 0; align: left middle; }
+        Button { margin-right: 1; }
+        #link_entry { margin-top: 1; }
+        DataTable { height: 1fr; border: solid $accent; }
+        DataTable > .datatable--cursor { background: $primary; color: white; }
+        RichLog { height: 1fr; border: solid $accent; }
+        .settings_field { margin-bottom: 1; }
+        .status_bar { height: auto; layout: horizontal; align: left middle; margin: 1 0; }
+        #overall_progress { width: 1fr; margin-left: 2; }
+        """
 
-    TITLE = "Poweramp Music Downloader (Unified)"
-    BINDINGS = [("q", "quit", "Kilépés"), ("ctrl+v", "paste_link", "Beillesztés")]
+    TITLE = "Music Downloader"
+    BINDINGS = [("q", "quit", "Exit"), ("ctrl+v", "paste_link", "Paste")]
 
     def __init__(self):
         super().__init__()
@@ -43,6 +45,8 @@ class MusicDownloaderApp(App):
         self.is_downloading = False
         self.item_counter = 0
         self.meta_manager = MetadataManager()
+
+        self.expanded_folders = set()
 
         # Config defaults
         self.cfg_path = str(Path.home() / "MusicDownloader")
@@ -74,7 +78,7 @@ class MusicDownloaderApp(App):
                     yield Button("Abort", id="btn_abort", variant="error")
                     yield Button("Clear List", id="btn_clear")
                 with Horizontal(classes="status_bar"):
-                    yield Label("Progress: 0%", id="speed_label")                
+                    yield Label("Progress: 0%", id="speed_label")
                     yield Label("   Overall progress:", id="overall_progress_label")
                     yield ProgressBar(total=100, show_eta=True, id="overall_progress")
                 yield DataTable(id="queue_table")
@@ -97,6 +101,7 @@ class MusicDownloaderApp(App):
 
     def on_mount(self):
         table = self.query_one(DataTable)
+        table.cursor_type = "row"
         table.add_columns("ID", "Status", "Name", "Folder")
         self.log_msg("Application started.", "SYSTEM")
 
@@ -108,7 +113,23 @@ class MusicDownloaderApp(App):
                 inp = self.query_one("#link_entry", Input)
                 inp.value = content.strip()
                 inp.focus()
-        except: pass
+        except:
+            pass
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected):
+        if event.row_key is None:
+            return
+
+        row_key = str(event.row_key.value)
+        if row_key and str(row_key).startswith("folder:"):
+            folder_name = str(row_key).replace("folder:", "")
+
+            if folder_name in self.expanded_folders:
+                self.expanded_folders.remove(folder_name)
+            else:
+                self.expanded_folders.add(folder_name)
+
+            self.refresh_queue_ui()
 
     def on_button_pressed(self, event: Button.Pressed):
         btn_id = event.button.id
@@ -165,23 +186,51 @@ class MusicDownloaderApp(App):
             self.call_from_thread(self._update_progress_bar)
 
     def _update_progress_bar(self):
-        bar = self.query_one("#overall_progress", ProgressBar)
-        total = len(self.download_queue)
-        done_count = len([i for i in self.download_queue if i['status'] in ('done', 'error')])
-        bar.update(total=total if total > 0 else 100, progress=done_count)
+        try:
+            bar = self.query_one("#overall_progress", ProgressBar)
+
+            total_tracks = 0
+            done_tracks = 0
+
+            for folder in self.download_queue:
+                tracks = folder.get('tracks', [])
+                total_tracks += len(tracks)
+
+                for track in tracks:
+                    if track.get('status') in ('done', 'error'):
+                        done_tracks += 1
+
+            bar.update(total=total_tracks if total_tracks > 0 else 100, progress=done_tracks)
+        except Exception as e:
+            self.log_msg(f"Progress bar error: {e}", "ERROR")
 
     def _refresh_table(self):
         table = self.query_one(DataTable)
         table.clear()
 
-        for list in self.download_queue:
-            table.add_row("", "", f"[bold yellow]📁 {list['title']}[/]", "", key=f"hdr_{list['title']}")
+        for folder_data in self.download_queue:
+            title = folder_data['title']
+            is_expanded = title in self.expanded_folders
+            icon = "📂" if is_expanded else "📁"
 
-            for track in list['tracks']:
-                status_styled = {"done": "[green]DONE[/]", "error": "[red]ERROR[/]", "working": "[blue]WORK[/]",
-                                 "waiting": "WAIT"}.get(track['status'], track['status'])
-                table.add_row(str(track['track_number']), status_styled, f"{track['artists'][0]} - {track['title']}" , list['title'])
+            table.add_row(
+                "",
+                "",
+                f"[bold yellow]{icon} {title}[/]",
+                "",
+                key=f"folder:{title}"
+            )
 
+            if is_expanded:
+                for track in folder_data['tracks']:
+                    status_styled = {
+                        "done": "[green]DONE[/]",
+                        "error": "[red]ERROR[/]",
+                        "working": "[blue]WORK[/]",
+                        "waiting": "WAIT"
+                    }.get(track['status'], track['status'])
+
+                    table.add_row(str(track['track_number']), status_styled, f"   {track['title']}", title)
 
     def toggle_pause(self):
         self.pause_requested = not self.pause_requested
@@ -200,6 +249,7 @@ class MusicDownloaderApp(App):
     def clear_queue_list(self):
         if self.is_downloading: return
         self.download_queue.clear()
+        self.expanded_folders.clear()
         self.refresh_queue_ui()
 
     def add_to_queue_thread(self):
@@ -240,60 +290,69 @@ class MusicDownloaderApp(App):
         active_threads = []
 
         while True:
-            active_threads = [t for t in active_threads if t.is_alive()]
             if self.stop_requested: break
-            waiting = [i for i in self.download_queue if i["status"] == "waiting"]
-            if not waiting and not active_threads: break
-            
+
+            target_track = None
+            target_folder = None
+
+            for folder in self.download_queue:
+                for track in folder['tracks']:
+                    if track['status'] == "waiting":
+                        target_track = track
+                        target_folder = folder
+                        break
+                if target_track: break
+
+            active_threads = [t for t in active_threads if t.is_alive()]
+
+            if not target_track and not active_threads: break
+
             if self.pause_requested:
                 time.sleep(0.5)
                 continue
 
-            if waiting and len(active_threads) < int(self.cfg_max_parallel):
-                item = waiting[0]
-                item["status"] = "working"
+            if target_track and len(active_threads) < int(self.cfg_max_parallel):
+                target_track["status"] = "working"
                 self.refresh_queue_ui()
-                t = threading.Thread(target=self.process_single_item, args=(item, quality_cfg, base_path))
+                t = threading.Thread(
+                    target=self.process_single_track,
+                    args=(target_track, target_folder['title'], quality_cfg, base_path)
+                )
                 t.start()
                 active_threads.append(t)
                 continue
+
             time.sleep(0.5)
 
         for t in active_threads: t.join()
         self.is_downloading = False
         self.log_msg("All tasks finished.", "SYSTEM")
 
-    def process_single_item(self, item, quality_cfg, base_path):
-        save_dir = base_path / item['folder'] if item['folder'] else base_path
+    def process_single_track(self, track, folder_name, quality_cfg, base_path):
+        save_dir = base_path / folder_name
         save_dir.mkdir(parents=True, exist_ok=True)
 
-        self.log_msg(f"Downloading: {item['display_name']}", "DL")
-        
-        # Callback a progress bar frissítéshez
+        display_name = f"{track['artists'][0]} - {track['title']}"
+        self.log_msg(f"Downloading: {display_name}", "DL")
+
         def progress_cb(msg):
             self.call_from_thread(self.query_one("#speed_label", Label).update, msg)
 
-        # 1. Letöltés
         success, filename = run_yt_dlp(
-            item['query'], 
-            quality_cfg, 
-            save_dir, 
-            self.process_lock, 
-            self.active_processes, 
+            track.get('url', track.get('query')),
+            quality_cfg,
+            save_dir,
+            self.process_lock,
+            self.active_processes,
             lambda: self.stop_requested,
             progress_cb
         )
 
         if success and filename:
-            # 2. Metadata frissítés
-            self.meta_manager.apply_metadata(filename, item['display_name'], self.log_msg)
-            
-            # 3. Playlist frissítés
-            if update_folder_playlist(str(save_dir)):
-                self.log_msg(f"Playlist updated in: {save_dir.name}", "PL")
-            
-            item["status"] = "done"
+            self.meta_manager.apply_metadata(filename, track, self.log_msg)
+            update_folder_playlist(str(save_dir))
+            track["status"] = "done"
         else:
-            item["status"] = "error"
-        
+            track["status"] = "error"
+
         self.refresh_queue_ui()
