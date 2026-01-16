@@ -1,0 +1,1 @@
+![Felépítés](graph.png "Felépítés")
