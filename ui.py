@@ -213,31 +213,16 @@ class MusicDownloaderApp(App):
     def process_input(self, link):
         self.log_msg(f"Analyzing: {link}", "ANALYZER")
         clean_link = link.split('?')[0]
-        
+        domain = clean_link.strip("https://").strip("http://").split("/")[0]
         try:
-            if "spotify.com" in clean_link:
-                if not self.cfg_sp_id or not self.cfg_sp_sec:
-                    self.log_msg("Missing Spotify credentials!", "ERROR")
-                else:
-                    tracks = get_spotify_tracks(clean_link, self.cfg_sp_id, self.cfg_sp_sec)
-                    for t in tracks:
-                        t.update({"status": "waiting", "id": self.item_counter})
-                        self.download_queue.append(t)
-                        self.item_counter += 1
-            else:
-                # YouTube / Generic
-                data = fetch_info(link)
-                if 'entries' in data:
-                    f_name = re.sub(r'[\\/*?:"<>|]', "", data.get('title', 'Playlist'))
-                    for entry in data['entries']:
-                        title = entry.get('title', 'Unknown')
-                        url = entry.get('url') or entry.get('webpage_url') or f"https://youtube.com/watch?v={entry.get('id')}"
-                        self.download_queue.append({"query": url, "display_name": title, "folder": f_name, "status": "waiting", "id": self.item_counter})
-                        self.item_counter += 1
-                else:
-                    title = data.get('title', link)
-                    self.download_queue.append({"query": link, "display_name": title, "folder": None, "status": "waiting", "id": self.item_counter})
-                    self.item_counter += 1
+            if "youtube.com" in domain or "youtu.be" in domain:
+                pass
+            if "soundcloud.com" in domain:
+                pass
+            if "spotify.com" in domain:
+                pass
+
+
         except Exception as e:
             self.log_msg(f"Error: {e}", "ERROR")
 
