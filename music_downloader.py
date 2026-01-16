@@ -62,6 +62,10 @@ class MusicDownloaderApp(App):
 
     TITLE = "Poweramp Music Downloader"
     BINDINGS = [("q", "quit", "Kilépés")]
+    BINDINGS = [
+        ("q", "quit", "Kilépés"),
+        ("ctrl+v", "paste_link", "Beillesztés")
+    ]
 
     def __init__(self):
         super().__init__()
@@ -134,6 +138,21 @@ class MusicDownloaderApp(App):
                 
                 yield Button("Save Settings", id="btn_save", variant="primary")
         yield Footer()
+
+    def action_paste_link(self):
+        """Beilleszti a vágólap tartalmát a link mezőbe."""
+        try:
+            import pyperclip
+            content = pyperclip.paste()
+            if content:
+                inp = self.query_one("#link_entry", Input)
+                inp.value = content.strip()
+                inp.focus()
+                self.notify("Link beillesztve!")
+        except ImportError:
+            self.notify("Hiba: Telepítsd a 'pyperclip' modult! (pip install pyperclip)", severity="error")
+        except Exception as e:
+            self.notify(f"Hiba: {e}", severity="error")
 
     def on_mount(self):
         table = self.query_one(DataTable)

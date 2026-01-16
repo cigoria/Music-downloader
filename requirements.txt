@@ -5,3 +5,4 @@ inquirer
 requests
 musicbrainzngs
 mutagen
+pyperclip
