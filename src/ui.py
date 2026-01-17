@@ -374,4 +374,8 @@ class MusicDownloaderApp(App):
                     if data["status"] == "waiting" or data["status"] == "error":
                         job_queue.append(lambda q_num=queue_num,q_s_num=queue_sub_num: self._download_wrapper(q_num, queue_sub_num))
 
+        self.thread_system.submit_jobs(job_queue)
+
+        t = threading.Thread(target=self.thread_system.wait_completion())
+        t.start()
 
