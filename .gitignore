@@ -1,5 +1,5 @@
 install.sh
-cache.json
+config.json
 .cache
 /__pycache__/
 /.idea/

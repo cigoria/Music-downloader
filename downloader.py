@@ -9,6 +9,18 @@ import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 import os
 
+# Constants
+
+quality_map = {
+    "MP3 128kbps": {"format": "mp3", "bitrate": "128K"},
+    "MP3 256kbps": {"format": "mp3", "bitrate": "256K"},
+    "MP3 320kbps": {"format": "mp3", "bitrate": "320K"},
+    "WebM (Best Audio)": {"format": "webm", "bitrate": "0"},
+    "OGG": {"format": "vorbis", "bitrate": "192K"},
+    "M4A": {"format": "m4a", "bitrate": "192K"},
+    "FLAC": {"format": "flac", "bitrate": "0"},
+}
+
 # Helper functions
 def check_network():
     is_online = ping3.ping("1.1.1.1")
@@ -229,8 +241,8 @@ def download_spotify(song_dict):
     yt_music_api = ytmusicapi.YTMusic()
     result_for_search = yt_music_api.search(search_query,filter="songs",limit=1)
     result = download_youtube(result_for_search[0]["videoId"])
+    return result["file_path"]
 
-    return
 def download_youtube(youtube_id):
     if not check_network():
         raise ConnectionError("No internet connection!")
