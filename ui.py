@@ -45,6 +45,7 @@ class MusicDownloaderApp(App):
         self.is_downloading = False
         self.item_counter = 0
         self.meta_manager = MetadataManager()
+        self.log_history = []
 
         self.expanded_folders = set()
 
@@ -83,6 +84,7 @@ class MusicDownloaderApp(App):
                     yield ProgressBar(total=100, show_eta=True, id="overall_progress")
                 yield DataTable(id="queue_table")
             with TabPane("Detailed Log", id="tab_log"):
+                yield Button("Copy Log to Clipboard", id="btn_copy_log", classes="settings_field")
                 yield RichLog(id="full_log", markup=True)
             with TabPane("Settings", id="tab_settings"):
                 yield Label("Download Root Folder:", classes="settings_field")
@@ -139,6 +141,7 @@ class MusicDownloaderApp(App):
         elif btn_id == "btn_abort": self.abort_process()
         elif btn_id == "btn_clear": self.clear_queue_list()
         elif btn_id == "btn_save": self.save_settings()
+        elif btn_id == "btn_copy_log": self.copy_log_to_clipboard()
 
     def load_settings(self):
         if os.path.exists(CONFIG_FILE):
@@ -166,6 +169,17 @@ class MusicDownloaderApp(App):
         with open(CONFIG_FILE, "w") as f: json.dump(data, f, indent=4)
         self.notify("Settings saved!")
 
+    def copy_log_to_clipboard(self):
+        try:
+            import pyperclip
+            content = "\n".join(self.log_history)
+            pyperclip.copy(content)
+            self.notify("Log copied to clipboard!")
+        except ImportError:
+            self.notify("Please install 'pyperclip' module (pip install pyperclip)", severity="error")
+        except Exception as e:
+            self.notify(f"Clipboard error: {e}", severity="error")
+
     def log_msg(self, message, level="INFO"):
         ts = datetime.datetime.now().strftime("%H:%M:%S")
         color = "white"
@@ -173,6 +187,7 @@ class MusicDownloaderApp(App):
         elif level == "WARNING": color = "yellow"
         elif level == "ERROR": color = "red"
         elif level == "SYSTEM": color = "blue"
+        self.log_history.append(f"[{ts}] [{level}] {str(message)}")
         msg = Text.from_markup(f"[{color}][{ts}] [{level}] {escape(str(message))}[/{color}]")
         if threading.get_ident() == self._thread_id: self.query_one("#full_log", RichLog).write(msg)
         else: self.call_from_thread(self.query_one("#full_log", RichLog).write, msg)
