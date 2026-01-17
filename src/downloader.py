@@ -489,4 +489,7 @@ def download_single(song_dict:dict,folder_name:str = None, callback=None):
     # Add cover
     cover_file = download_file(song_dict["thumbnail"], ".TEMP")
     add_cover_art(ffmpeg_out, cover_file)
+    if callback: callback("cleaning")
+    os.remove(music_filename)
+    os.remove(cover_file)
     if callback: callback("done")

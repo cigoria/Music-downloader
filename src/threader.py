@@ -1,95 +1,72 @@
-import threading
+import multiprocessing as mp
 import queue
 import uuid
+import time
 from typing import Callable, Iterable
 
 SEC_PER_CHECK = 2
 
 
-class WorkerThread(threading.Thread):
-    """A single worker that pulls callables from a queue and runs them."""
+def worker_process(job_queue: mp.Queue, pause_event: mp.Event):
+    worker_id = uuid.uuid4()
 
-    def __init__(
-        self,
-        job_queue: queue.Queue,
-        pause_event: threading.Event,
-        abort_event: threading.Event,
-        *,
-        daemon: bool = True,
-    ):
-        super().__init__(daemon=daemon)
-        self.job_queue = job_queue
-        self.pause_event = pause_event
-        self.abort_event = abort_event
-        self.id = uuid.uuid4()
+    while True:
+        pause_event.wait()  # pause support
 
-    def run(self) -> None:
-        while not self.abort_event.is_set():
-            # Block here if paused
-            self.pause_event.wait()
+        try:
+            job = job_queue.get(timeout=SEC_PER_CHECK)
+        except queue.Empty:
+            continue
 
-            try:
-                job = self.job_queue.get(timeout=SEC_PER_CHECK)
-            except queue.Empty:
-                continue
+        if job is None:
+            # shutdown signal
+            break
 
-            try:
-                if self.abort_event.is_set():
-                    return
-
-                job()  # Execute the callable
-                print(f"{self.id} completed a job")
-
-            finally:
-                self.job_queue.task_done()
+        try:
+            job()
+            print(f"{worker_id} completed a job")
+        finally:
+            job_queue.task_done()
 
 
 class QueueSystem:
-    """Thread pool with pause, resume and abort support."""
-
-    def __init__(self, max_threads: int = 4):
-        self.job_queue = queue.Queue()
-
-        self.pause_event = threading.Event()
-        self.abort_event = threading.Event()
-
-        # Start unpaused
+    def __init__(self, max_processes: int = 4):
+        self.job_queue = mp.JoinableQueue()
+        self.pause_event = mp.Event()
         self.pause_event.set()
 
-        self.workers: list[WorkerThread] = []
-        for _ in range(max_threads):
-            worker = WorkerThread(
-                self.job_queue,
-                self.pause_event,
-                self.abort_event,
+        self.workers: list[mp.Process] = []
+        for _ in range(max_processes):
+            p = mp.Process(
+                target=worker_process,
+                args=(self.job_queue, self.pause_event),
+                daemon=True,
             )
-            worker.start()
-            self.workers.append(worker)
+            p.start()
+            self.workers.append(p)
 
     def submit_jobs(self, jobs: Iterable[Callable]):
-        if self.abort_event.is_set():
-            raise RuntimeError("QueueSystem has been aborted")
-
         for job in jobs:
-            if not callable(job):
-                raise TypeError("All jobs must be callables")
             self.job_queue.put(job)
 
     def pause(self):
-        """Pause execution of new jobs."""
         self.pause_event.clear()
 
     def resume(self):
-        """Resume execution."""
         self.pause_event.set()
 
     def abort(self, clear_queue: bool = True):
         """
-        Abort all workers.
-        Optionally clears pending jobs.
+        Force-terminate all worker processes.
+        This WILL kill running jobs immediately.
         """
-        self.abort_event.set()
-        self.pause_event.set()  # wake paused workers
+        # Kill workers
+        for p in self.workers:
+            if p.is_alive():
+                p.terminate()
+                p.join()
+
+        self.workers.clear()
 
         if clear_queue:
             while True:
@@ -99,6 +76,15 @@ class QueueSystem:
                 except queue.Empty:
                     break
 
+    def shutdown_graceful(self):
+        """Let workers exit cleanly after finishing current jobs."""
+        for _ in self.workers:
+            self.job_queue.put(None)
+
+        self.job_queue.join()
+
+        for p in self.workers:
+            p.join()
+
     def wait_completion(self):
-        """Block until all queued jobs have finished."""
         self.job_queue.join()

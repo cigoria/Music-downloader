@@ -12,6 +12,7 @@ from consts import CONFIG_FILE
 from downloader import *
 from playlist import *
 from threader import *
+import threading
 
 class MusicDownloaderApp(App):
     CSS = """
@@ -64,7 +65,7 @@ class MusicDownloaderApp(App):
         }
         self.load_settings()
 
-        self.thread_system = QueueSystem(max_threads=int(self.cfg_max_parallel))
+        self.thread_system = QueueSystem(max_processes=int(self.cfg_max_parallel))
 
 
     def compose(self) -> ComposeResult:
@@ -283,6 +284,10 @@ class MusicDownloaderApp(App):
                         table.add_row(str(track['track_number']), status_styled, f"   {track['title']}", title)
 
     def toggle_pause(self):
+        if self.pause_requested:
+            self.thread_system.pause()
+        else:
+            self.thread_system.resume()
         self.pause_requested = not self.pause_requested
         btn = self.query_one("#btn_pause", Button)
         btn.label = "Resume" if self.pause_requested else "Pause"
@@ -290,9 +295,7 @@ class MusicDownloaderApp(App):
 
     def abort_process(self):
         self.stop_requested = True
-        with self.process_lock:
-            for proc in self.active_processes:
-                if proc.poll() is None: proc.terminate()
+        self.thread_system.abort()
         self.is_downloading = False
         self.log_msg("Aborted.", "SYSTEM")
 
@@ -335,13 +338,14 @@ class MusicDownloaderApp(App):
         self.call_from_thread(lambda: setattr(self.query_one("#btn_add", Button), "disabled", False))
 
     def change_state(self,state,q_num,q_s_num):
-        if q_s_num:
+        if q_s_num is not None:
             self.download_queue[q_num][q_s_num]["state"] = state
         else:
             self.download_queue[q_num]["state"] = state
 
     def _download_wrapper(self,queue_num,queue_sub_num):
-        if queue_sub_num:
+        self.log_msg(f"Started job {queue_sub_num} in {queue_num}","INFO")
+        if queue_sub_num is not None:
             self.change_state("downloading", queue_num, queue_sub_num)
             callback = lambda state: self.change_state(state, queue_num, queue_sub_num)
             folder_name = sanitize(self.download_queue[queue_num]["title"])
@@ -360,8 +364,6 @@ class MusicDownloaderApp(App):
                 raise e
 
     def start_downloads(self):
-        if self.download_queue:
-            raise RuntimeError("The program is already downloading!")
 
         job_queue = []
 
@@ -369,13 +371,15 @@ class MusicDownloaderApp(App):
             if data["item-type"] == "track":
                 if data["status"] == "waiting":
                     job_queue.append(lambda q_num=queue_num: self._download_wrapper(q_num,None))
+                self.log_msg(len(job_queue), "DEBUG")
             if data["item-type"] == "playlist":
-                for queue_sub_num, data2 in enumerate(data):
+                for queue_sub_num, data2 in enumerate(data["tracks"]):
                     if data["status"] == "waiting" or data["status"] == "error":
                         job_queue.append(lambda q_num=queue_num,q_s_num=queue_sub_num: self._download_wrapper(q_num, queue_sub_num))
-
+        self.log_msg(job_queue,"DEBUG")
         self.thread_system.submit_jobs(job_queue)
-
-        t = threading.Thread(target=self.thread_system.wait_completion())
+        self.log_msg("Starting job queue","INFO")
+        t = threading.Thread(target=self.thread_system.wait_completion)
         t.start()
+
 
