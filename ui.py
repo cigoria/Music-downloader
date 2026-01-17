@@ -89,7 +89,7 @@ class MusicDownloaderApp(App):
             with TabPane("Settings", id="tab_settings"):
                 yield Label("Download Root Folder:", classes="settings_field")
                 yield Input(value=self.cfg_path, id="input_path", classes="settings_field")
-                yield Label("Filename Template:", classes="settings_field")
+                yield Label("Filename Template:", id="lbl_template", classes="settings_field")
                 yield Input(value=self.cfg_template, id="template", classes="settings_field")
                 yield Label("Spotify Client ID:", classes="settings_field")
                 yield Input(value=self.cfg_sp_id, password=True, id="input_sp_id", classes="settings_field")
@@ -110,6 +110,8 @@ class MusicDownloaderApp(App):
         table.cursor_type = "row"
         table.add_columns("ID", "Status", "Name", "Folder")
         self.query_one("#btn_copy_log").display = self.cfg_dev_mode
+        self.query_one("#lbl_template").display = self.cfg_dev_mode
+        self.query_one("#template").display = self.cfg_dev_mode
         self.log_msg("Application started.", "SYSTEM")
 
     def action_paste_link(self):
@@ -142,7 +144,8 @@ class MusicDownloaderApp(App):
     def on_switch_changed(self, event: Switch.Changed):
         if event.switch.id == "switch_dev":
             self.query_one("#btn_copy_log").display = event.value
-
+            self.query_one("#lbl_template").display = event.value
+            self.query_one("#template").display = event.value
 
     def on_button_pressed(self, event: Button.Pressed):
         btn_id = event.button.id
@@ -315,7 +318,7 @@ class MusicDownloaderApp(App):
                 result_dict = youtube_get_initial(link)
                 self.download_queue.append(result_dict)
             elif "soundcloud.com" in domain:
-                self.notify("We are working on this platform",severity="warning")
+                self.notify("We are working on this platform", severity="warning")
             elif "spotify.com" in domain:
                 result_dict = spotify_get_initial(link)
                 self.download_queue.append(result_dict)
@@ -323,11 +326,11 @@ class MusicDownloaderApp(App):
                 self.notify("Creators: Zeti_1223 and SkyFonix")
             else:
                 self.log_msg(f"Error: service at {domain} is not supported!", "ERROR")
-                self.notify(f"Error: service at {domain} is not supported!",severity="error")
+                self.notify(f"Error: service at {domain} is not supported!", severity="error")
 
         except Exception as e:
             self.log_msg(f"Error: {e}", "ERROR")
-            self.notify(f"Error: {e}",severity="error")
+            self.notify(f"Error: {e}", severity="error")
 
         self.refresh_queue_ui()
         self.call_from_thread(lambda: setattr(self.query_one("#btn_add", Button), "disabled", False))

@@ -13,7 +13,7 @@ from mutagen.easyid3 import EasyID3
 from mutagen.mp4 import MP4
 from mutagen.oggvorbis import OggVorbis
 from mutagen.flac import FLAC
-
+import requests
 
 # Constants
 
@@ -39,6 +39,16 @@ def check_network():
 
 def sanitize(s):
     return re.sub(r'[<>:"/\\|?*\']', '', s)
+
+def download_file(url: str, save_path: str):
+    if check_network():
+        r = requests.get(url, stream=True)
+        r.raise_for_status()
+        with open(save_path, "wb") as f:
+            for chunk in r.iter_content(8192):
+                f.write(chunk)
+        return save_path
+    return None, None
 
 def template_decoder(template, data: dict = None, magic_char: str = "$"):
     if data is None: data = {}
@@ -133,25 +143,19 @@ def edit_audio_metadata(input_file: str, data: dict):
         artist_str = ", ".join(artists)
         tags[mapping["artist"]] = artist_str
 
-        # Specific fix for MP3: Set albumartist to match for clean sorting in music players
         if ext == "mp3":
             tags["albumartist"] = artist_str
 
-    # 4. Update Other Fields
-    # Mapping our generic 'data' keys to format-specific 'tag' keys
     field_mapping = {
         "title": mapping["title"],
         "album": mapping["album"],
-        "release": mapping["date"]
+        "year": mapping["date"]
     }
 
     for data_key, tag_key in field_mapping.items():
         val = data.get(data_key)
         if val is not None:
             tags[tag_key] = str(val)
-
-    # 5. Save
-    # EasyID3 needs a specific version for max hardware compatibility (v2.3)
     if ext == "mp3":
         audio.save(v2_version=3)
     else:
@@ -416,8 +420,14 @@ def download_single(song_dict:dict,folder_name:str = None):
 
     templater_data = {"title": song_dict["title"],"artist":song_dict["artists"].join(","),"album":song_dict["album"],"year":song_dict["release"],"length":song_dict["duration_seconds"],"platform":song_dict["type"],"track_number": song_dict["track_number"]}
     final_filename = template_decoder(config["filename_template"], data=templater_data)
-
+    # Transcode
     ffmpeg_out = transcode_audio(music_filename, output_folder,final_filename,quality_preset=config["quality"])
+    # Add text based metadata
+    edit_audio_metadata(ffmpeg_out,data=templater_data)
+    # Add cover
+    cover_file = download_file(song_dict["thumbnail"], ".TEMP")
+
+
 
 
 
