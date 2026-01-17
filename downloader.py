@@ -30,16 +30,15 @@ def spotify_get_initial(link):
             raise ValueError("No spotify tokens given!")
 
 
+        return_dict = {}
         client_credentials_mgmt = SpotifyClientCredentials(client_id=config["sp_id"],client_secret=config["sp_sec"])
         sp = spotipy.Spotify(client_credentials_manager=client_credentials_mgmt)
         if "playlist/" in link:
-            return_dict = {}
             collection_data = sp.playlist(spotify_id)
 
             return_dict["tracks"] = []
             return_dict["title"] = collection_data.get("name", "Unknown title")
-            images = collection_data.get("images", [])
-            return_dict["thumbnail"] = images[0].get("url", None) if images else None
+            return_dict["thumbnail"] = collection_data.get("images", [])[0].get("url", None)
             return_dict["type"] = "spotify"
 
             return_result = sp.playlist_items(spotify_id)
@@ -49,7 +48,6 @@ def spotify_get_initial(link):
 
             for i, track in enumerate(tracks):
                 track_dict = {}
-                print(track)
                 track_dict["title"] = track["track"].get("name", "Unknown title")
                 track_dict["artists"] = [i.get("name", "Unknown artist") for i in
                                          track["track"].get("artists")] if track.get(
@@ -58,8 +56,7 @@ def spotify_get_initial(link):
                 track_dict["duration_seconds"] = str(track["track"].get("duration_ms", 0) // 1000)
                 track_dict["release"] = track["track"].get("album", {}).get("release_date", None)
                 track_dict["release"] = track_dict["release"].split("-")[0] if track_dict["release"] else None
-                imgs = track["track"].get("images") or track["track"].get("album", {}).get("images")
-                track_dict["thumbnail"] = imgs[0].get("url", None) if imgs else None
+                track_dict["thumbnail"] = track["track"]["album"]["images"][0].get("url", None)
                 track_dict["track_number"] = i + 1
                 track_dict["status"] = "waiting"
                 track_dict["spotify_id"] = track["track"].get("id", None)
@@ -71,27 +68,24 @@ def spotify_get_initial(link):
 
             return_dict["tracks"] = []
             return_dict["title"] = collection_data.get("name", "Unknown title")
-            images = collection_data.get("images", [])
-            return_dict["thumbnail"] = images[0].get("url", None) if images else None
+            return_dict["thumbnail"] = collection_data.get("images", [])[0].get("url", None)
             return_dict["type"] = "spotify"
             return_dict["spotify_id"] = spotify_id
 
-            for i, track in enumerate(collection_data["tracks"]):
+            for i, track in enumerate(collection_data["tracks"]["items"]):
                 track_dict = {}
-                print(track)
-                track_dict["title"] = track["track"].get("name", "Unknown title")
+                track_dict["title"] = track.get("name", "Unknown title")
                 track_dict["artists"] = [i.get("name", "Unknown artist") for i in
-                                         track["track"].get("artists")] if track.get(
+                                         track.get("artists")] if track.get(
                     "artists") is not None else ["Unknown artist"]
-                track_dict["album"] = track["track"].get("album", {}).get("name", "Unknown album")
-                track_dict["duration_seconds"] = str(track["track"].get("duration_ms", 0) // 1000)
-                track_dict["release"] = track["track"].get("album", {}).get("release_date", None)
+                track_dict["album"] = collection_data.get("name", "Unknown album")
+                track_dict["duration_seconds"] = str(track.get("duration_ms", 0) // 1000)
+                track_dict["release"] = collection_data.get("release_date", None)
                 track_dict["release"] = track_dict["release"].split("-")[0] if track_dict["release"] else None
-                imgs = track["track"].get("images") or track["track"].get("album", {}).get("images")
-                track_dict["thumbnail"] = imgs[0].get("url", None) if imgs else None
+                track_dict["thumbnail"] = return_dict.get("thumbnail",None)
                 track_dict["track_number"] = i + 1
                 track_dict["status"] = "waiting"
-                track_dict["spotify_id"] = track["track"].get("id", None)
+                track_dict["spotify_id"] = track.get("id", None)
                 track_dict["type"] = "spotify"
                 return_dict["tracks"].append(track_dict)
         return return_dict
@@ -104,9 +98,11 @@ def youtube_get_initial(link):
             raise ValueError("Not Playlist Link!")
         if not check_network():
             raise ConnectionError("No internet connection!")
-        youtube_id = link.split("list=")[-1].split("&")[0]
+        youtube_id = link.split("/")[-1].split("?list=")[-1]
         if youtube_id is None:
             raise ValueError("No youtube id given!")
+        if len(youtube_id) != 34:
+            ValueError("Invalid youtube id given!")
 
         yt_music_api = ytmusicapi.YTMusic()
         try:
@@ -125,8 +121,8 @@ def youtube_get_initial(link):
                     track_dict["album"] = track.get("album", {}).get("name", "Unknown album") if not track["album"] is None else "Unknown album"
 
                     track_dict["duration_seconds"] = track.get("duration", 0)
-                    thumbnails = track.get("thumbnails")
-                    track_dict["thumbnail"] = thumbnails[0]["url"].split("=")[0] + "=w600-h600" if thumbnails else None
+                    track_dict["thumbnail"] = track.get("thumbnails")[0]["url"].split("=")[0] + "=w600-h600" if track.get(
+                        "thumbnails") is not None else None
                     track_dict["youtube_id"] = track["videoId"]
                     track_dict["type"] = "youtube"
                     track_dict["release"] = None
@@ -138,8 +134,7 @@ def youtube_get_initial(link):
                     print(e)
             try:
                 return_dict["title"] = data.get("title", "Unknwon Title")
-                thumbnails = data.get("thumbnails", [])
-                return_dict["thumbnail"] = thumbnails[-1].get("url", None) if thumbnails else None
+                return_dict["thumbnail"] = data.get("thumbnails", [])[-1].get("url", None)
                 return_dict["type"] = "youtube"
             except Exception as e:
                 print(e)
