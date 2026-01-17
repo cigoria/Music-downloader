@@ -27,10 +27,10 @@ quality_map = {
     "FLAC": {"ext": "flac", "codec": "flac", "bitrate": "0"}
 }
 tag_map = {
-    "mp3": {"handler": EasyID3, "title": "title", "artist": "artist", "album": "album", "date": "date"},
-    "m4a": {"handler": MP4, "title": "\xa9nam", "artist": "\xa9ART", "album": "\xa9alb", "date": "\xa9day"},
-    "ogg": {"handler": OggVorbis, "title": "TITLE", "artist": "ARTIST", "album": "ALBUM", "date": "DATE"},
-    "flac": {"handler": FLAC, "title": "TITLE", "artist": "ARTIST", "album": "ALBUM", "date": "DATE"}
+    "mp3": {"handler": EasyID3,"title": "title","artist": "artist","album": "album","date": "date","track": "tracknumber"},
+    "m4a": {"handler": MP4,"title": "\xa9nam","artist": "\xa9ART","album": "\xa9alb","date": "\xa9day","track": "trkn"},
+    "ogg": {"handler": OggVorbis, "title": "TITLE", "artist": "ARTIST", "album": "ALBUM", "date": "DATE", "track": "TRACKNUMBER"},
+    "flac": {"handler": FLAC, "title": "TITLE", "artist": "ARTIST", "album": "ALBUM", "date": "DATE", "track": "TRACKNUMBER"}
 }
 
 # Helper functions
@@ -147,23 +147,30 @@ def edit_audio_metadata(input_file: str, data: dict):
         if ext == "mp3":
             tags["albumartist"] = artist_str
 
+    # Updated field_mapping to include 'track'
     field_mapping = {
-        "title": mapping["title"],
-        "album": mapping["album"],
-        "year": mapping["date"]
+        "title": mapping.get("title"),
+        "album": mapping.get("album"),
+        "year": mapping.get("date"),
+        "track_number": mapping.get("track")  # Added track here
     }
 
     for data_key, tag_key in field_mapping.items():
+        if tag_key is None:
+            continue
+
         val = data.get(data_key)
         if val is not None:
+            # Note: For M4A (MP4), 'trkn' usually expects a tuple/list [(track, total)]
+            # If your tag_map handler is standard Mutagen, str(val) works best for MP3 (TRCK)
             tags[tag_key] = str(val)
+
     if ext == "mp3":
         audio.save(v2_version=3)
     else:
         audio.save()
 
     return data
-
 def add_cover_art(audio_path: str, image_path: str):
     if not os.path.exists(audio_path):
         raise FileNotFoundError(f"Audio file not found: {audio_path}")
@@ -479,7 +486,7 @@ def download_single(song_dict:dict,folder_name:str = None, callback=None):
         output_folder = os.path.join(config["path"], folder_name)
         os.makedirs(output_folder, exist_ok=True)
     if callback: callback("transcoding")
-    templater_data = {"title": song_dict["title"],"artist":", ".join(song_dict["artists"]),"album":song_dict["album"],"year":song_dict["release"],"length":song_dict["duration_seconds"],"platform":song_dict["type"],"track_number": song_dict["track_number"]}
+    templater_data = {"title": song_dict["title"],"artist":", ".join(song_dict["artists"]),"album":song_dict["album"],"year":song_dict["release"],"length":song_dict["duration_seconds"],"platform":song_dict["type"],"track_number": int(song_dict["track_number"])}
     final_filename = template_decoder(config["filename_template"], data=templater_data)
     # Transcode
     ffmpeg_out = transcode_audio(music_filename, output_folder,final_filename,quality_preset=config["quality"])
