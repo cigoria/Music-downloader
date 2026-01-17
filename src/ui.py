@@ -254,15 +254,26 @@ class MusicDownloaderApp(App):
         table = self.query_one(DataTable)
         table.clear()
 
+        status_map = {
+            "waiting": "WAIT",
+            "downloading": "[blue]DOWNLOADING[/]",
+            "transcoding": "[magenta]TRANSCODING[/]",
+            "metadata": "[cyan]METADATA[/]",
+            "cleaning": "[blue]CLEANING[/]",
+            "done": "[green]DONE[/]",
+            "error": "[red]ERROR[/]",
+            "aborted": "[red]ABORTED[/]",
+            "paused": "[yellow]PAUSED[/]"
+        }
+
+        def get_status_styled(status):
+            if self.pause_requested and status == "waiting":
+                return "[yellow]PAUSED[/]"
+            return status_map.get(status, status)
+
         for item in self.download_queue:
             if item["item-type"] == "track":
-                status_styled = {
-                    "done": "[green]DONE[/]",
-                    "error": "[red]ERROR[/]",
-                    "working": "[blue]WORK[/]",
-                    "waiting": "WAIT"
-                }.get(item['status'], item['status'])
-
+                status_styled = get_status_styled(item['status'])
                 table.add_row(str(item['track_number']), status_styled, f"   {item['title']}", "")
             if item["item-type"] == "playlist":
                 title = item['title']
@@ -279,13 +290,7 @@ class MusicDownloaderApp(App):
 
                 if is_expanded:
                     for track in item['tracks']:
-                        status_styled = {
-                            "done": "[green]DONE[/]",
-                            "error": "[red]ERROR[/]",
-                            "working": "[blue]WORK[/]",
-                            "waiting": "WAIT"
-                        }.get(track['status'], track['status'])
-
+                        status_styled = get_status_styled(track['status'])
                         table.add_row(str(track['track_number']), status_styled, f"   {track['title']}", title)
 
     def toggle_pause(self):
@@ -297,12 +302,23 @@ class MusicDownloaderApp(App):
         btn = self.query_one("#btn_pause", Button)
         btn.label = "Resume" if self.pause_requested else "Pause"
         btn.variant = "primary" if self.pause_requested else "warning"
+        self.refresh_queue_ui()
 
     def abort_process(self):
         self.stop_requested = True
         self.thread_system.abort()
         self.is_downloading = False
         self.log_msg("Aborted.", "SYSTEM")
+
+        for item in self.download_queue:
+            if item["item-type"] == "track":
+                if item["status"] not in ("done", "error"):
+                    item["status"] = "aborted"
+            elif item["item-type"] == "playlist":
+                for track in item["tracks"]:
+                    if track["status"] not in ("done", "error"):
+                        track["status"] = "aborted"
+        self.refresh_queue_ui()
 
     def clear_queue_list(self):
         if self.is_downloading: return
@@ -353,6 +369,8 @@ class MusicDownloaderApp(App):
         if self.cfg_dev_mode:
             self.log_msg(f"Step: {state} -> {title}", "DEBUG")
 
+        self.refresh_queue_ui()
+
     def _download_wrapper(self,queue_num,queue_sub_num):
         self.log_msg(f"Started job {queue_sub_num} in {queue_num}","INFO")
         if queue_sub_num is not None:
@@ -384,8 +402,8 @@ class MusicDownloaderApp(App):
                 self.log_msg(len(job_queue), "DEBUG")
             if data["item-type"] == "playlist":
                 for queue_sub_num, data2 in enumerate(data["tracks"]):
-                    if data["status"] == "waiting" or data["status"] == "error":
-                        job_queue.append(lambda q_num=queue_num,q_s_num=queue_sub_num: self._download_wrapper(q_num, queue_sub_num))
+                    if data2["status"] == "waiting" or data2["status"] == "error":
+                        job_queue.append(lambda q_num=queue_num,q_s_num=queue_sub_num: self._download_wrapper(q_num, q_s_num))
         self.log_msg(job_queue,"DEBUG")
         self.thread_system.submit_jobs(job_queue)
         self.log_msg("Starting job queue","INFO")

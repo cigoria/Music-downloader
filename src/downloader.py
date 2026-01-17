@@ -262,7 +262,7 @@ def spotify_get_initial(link):
                 track_dict = {}
                 track_dict["title"] = track["track"].get("name", "Unknown title")
                 track_dict["artists"] = [i.get("name", "Unknown artist") for i in
-                                         track["track"].get("artists")] if track.get(
+                                         track["track"].get("artists")] if track["track"].get(
                     "artists") is not None else ["Unknown artist"]
                 track_dict["album"] = track["track"].get("album", {}).get("name", "Unknown album")
                 track_dict["duration_seconds"] = str(track["track"].get("duration_ms", 0) // 1000)
