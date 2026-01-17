@@ -2,6 +2,7 @@ import os
 import threading
 import datetime
 import time
+import json
 from pathlib import Path
 
 from rich.text import Text
@@ -9,7 +10,7 @@ from rich.markup import escape
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal
 from textual.widgets import Header, Footer, Button, Input, Label, TabbedContent, TabPane, RichLog, Select, DataTable, \
-    ProgressBar
+    ProgressBar, Switch
 
 from consts import CONFIG_FILE
 from metadata import MetadataManager
@@ -28,6 +29,7 @@ class MusicDownloaderApp(App):
         .settings_field { margin-bottom: 1; }
         .status_bar { height: auto; layout: horizontal; align: left middle; margin: 1 0; }
         #overall_progress { width: 1fr; margin-left: 2; }
+        #switch_dev { margin-bottom: 1; }
         """
 
     TITLE = "Music Downloader"
@@ -53,12 +55,13 @@ class MusicDownloaderApp(App):
         self.cfg_sp_sec = ""
         self.cfg_quality = "MP3 320kbps"
         self.cfg_max_parallel = "1"
+        self.cfg_dev_mode = False
+        self.cfg_template = "$artist$ - $title$"
 
         self.quality_map = {
             "MP3 128kbps": {"format": "mp3", "bitrate": "128K"},
             "MP3 256kbps": {"format": "mp3", "bitrate": "256K"},
             "MP3 320kbps": {"format": "mp3", "bitrate": "320K"},
-            "WebM (Best Audio)": {"format": "webm", "bitrate": "0"},
             "OGG": {"format": "vorbis", "bitrate": "192K"},
             "M4A": {"format": "m4a", "bitrate": "192K"},
             "FLAC": {"format": "flac", "bitrate": "0"},
@@ -86,6 +89,8 @@ class MusicDownloaderApp(App):
             with TabPane("Settings", id="tab_settings"):
                 yield Label("Download Root Folder:", classes="settings_field")
                 yield Input(value=self.cfg_path, id="input_path", classes="settings_field")
+                yield Label("Filename Template:", classes="settings_field")
+                yield Input(value=self.cfg_template, id="template", classes="settings_field")
                 yield Label("Spotify Client ID:", classes="settings_field")
                 yield Input(value=self.cfg_sp_id, password=True, id="input_sp_id", classes="settings_field")
                 yield Label("Spotify Client Secret:", classes="settings_field")
@@ -95,6 +100,8 @@ class MusicDownloaderApp(App):
                 yield Select(options, value=self.cfg_quality, id="select_quality", allow_blank=False, classes="settings_field")
                 yield Label("Max Parallel Downloads (1-20):", classes="settings_field")
                 yield Input(value=self.cfg_max_parallel, id="input_parallel", classes="settings_field", type="integer")
+                yield Label("Developer options:", classes="settings_field")
+                yield Switch(value=self.cfg_dev_mode, id="switch_dev")
                 yield Button("Save Settings", id="btn_save", variant="primary")
         yield Footer()
 
@@ -102,6 +109,7 @@ class MusicDownloaderApp(App):
         table = self.query_one(DataTable)
         table.cursor_type = "row"
         table.add_columns("ID", "Status", "Name", "Folder")
+        self.query_one("#btn_copy_log").display = self.cfg_dev_mode
         self.log_msg("Application started.", "SYSTEM")
 
     def action_paste_link(self):
@@ -131,6 +139,11 @@ class MusicDownloaderApp(App):
 
             self.refresh_queue_ui()
 
+    def on_switch_changed(self, event: Switch.Changed):
+        if event.switch.id == "switch_dev":
+            self.query_one("#btn_copy_log").display = event.value
+
+
     def on_button_pressed(self, event: Button.Pressed):
         btn_id = event.button.id
         if btn_id == "btn_add": self.add_to_queue_thread()
@@ -151,6 +164,8 @@ class MusicDownloaderApp(App):
                     self.cfg_sp_sec = data.get("sp_sec", "")
                     self.cfg_quality = data.get("quality", "MP3 320kbps")
                     self.cfg_max_parallel = data.get("max_parallel", "1")
+                    self.cfg_template = data.get("filename_template", "")
+                    self.cfg_dev_mode = data.get("dev_mode", False)
             except: pass
 
     def save_settings(self):
@@ -158,12 +173,22 @@ class MusicDownloaderApp(App):
         self.cfg_sp_id = self.query_one("#input_sp_id", Input).value.strip()
         self.cfg_sp_sec = self.query_one("#input_sp_sec", Input).value.strip()
         self.cfg_quality = self.query_one("#select_quality", Select).value
+        self.cfg_template = self.query_one("#template", Input).value
+        self.cfg_dev_mode = self.query_one("#switch_dev", Switch).value
         try:
             val = int(self.query_one("#input_parallel", Input).value)
             self.cfg_max_parallel = str(max(1, min(20, val)))
         except ValueError:
             self.cfg_max_parallel = "1"
-        data = {"path": self.cfg_path, "sp_id": self.cfg_sp_id, "sp_sec": self.cfg_sp_sec, "quality": self.cfg_quality, "max_parallel": self.cfg_max_parallel}
+        data = {
+            "path": self.cfg_path,
+            "sp_id": self.cfg_sp_id,
+            "sp_sec": self.cfg_sp_sec,
+            "quality": self.cfg_quality,
+            "max_parallel": self.cfg_max_parallel,
+            "filename_template": self.cfg_template,
+            "dev_mode": self.cfg_dev_mode
+        }
         with open(CONFIG_FILE, "w") as f: json.dump(data, f, indent=4)
         self.notify("Settings saved!")
 

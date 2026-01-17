@@ -8,6 +8,12 @@ import ping3
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 import os
+import imageio_ffmpeg as ffmpeg
+from mutagen.easyid3 import EasyID3
+from mutagen.mp4 import MP4
+from mutagen.oggvorbis import OggVorbis
+from mutagen.flac import FLAC
+
 
 # Constants
 
@@ -15,10 +21,15 @@ quality_map = {
     "MP3 128kbps": {"format": "mp3", "bitrate": "128K"},
     "MP3 256kbps": {"format": "mp3", "bitrate": "256K"},
     "MP3 320kbps": {"format": "mp3", "bitrate": "320K"},
-    "WebM (Best Audio)": {"format": "webm", "bitrate": "0"},
     "OGG": {"format": "vorbis", "bitrate": "192K"},
     "M4A": {"format": "m4a", "bitrate": "192K"},
     "FLAC": {"format": "flac", "bitrate": "0"},
+}
+tag_map = {
+    "mp3": {"handler": EasyID3, "title": "title", "artist": "artist", "album": "album", "date": "date"},
+    "m4a": {"handler": MP4, "title": "\xa9nam", "artist": "\xa9ART", "album": "\xa9alb", "date": "\xa9day"},
+    "ogg": {"handler": OggVorbis, "title": "TITLE", "artist": "ARTIST", "album": "ALBUM", "date": "DATE"},
+    "flac": {"handler": FLAC, "title": "TITLE", "artist": "ARTIST", "album": "ALBUM", "date": "DATE"}
 }
 
 # Helper functions
@@ -51,7 +62,102 @@ def template_decoder(template, data: dict = None, magic_char: str = "$"):
     return re.sub(r'[<>:"/\\|?*\']', '', final).strip()
 
 
-# Initial metadata collection functions
+def transcode_audio(input_file: str, output_path: str, filename: str,
+                    quality_preset: str = "MP3 256kbps", overwrite: bool = True):
+    
+    if not all([input_file, output_path, filename]):
+        raise ValueError("Input file, output path, and filename are required.")
+
+    if quality_preset not in quality_map:
+        raise ValueError(f"Invalid preset. Choose from: {list(quality_map.keys())}")
+
+    if not os.path.exists(input_file):
+        raise FileNotFoundError(f"Input file not found: {input_file}")
+
+    if not os.path.exists(output_path):
+        os.makedirs(output_path, exist_ok=True)
+
+    settings = quality_map[quality_preset]
+    output_ext = settings["ext"]
+    bitrate = settings["bitrate"]
+    codec = settings["codec"]
+
+    clean_filename = "".join([c for c in filename if c.isalnum() or c in (' ', '.', '_')]).rstrip()
+    output_file = os.path.join(output_path, f"{clean_filename}.{output_ext}")
+
+    if os.path.exists(output_file) and not overwrite:
+        raise FileExistsError(f"Output file already exists: {output_file}")
+
+    ffmpeg_path = ffmpeg.get_ffmpeg_exe()
+
+    command = [
+        ffmpeg_path,
+        '-loglevel', 'quiet',
+        '-i', input_file,
+        '-c:a', codec,
+    ]
+    if bitrate != "0":
+        command.extend(['-b:a', bitrate])
+    if overwrite:
+        command.append('-y')
+    else:
+        command.append('-n')
+    command.append(output_file)
+    try:
+        subprocess.run(command, check=True)
+        return output_file
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"FFmpeg process failed: {e}")
+
+
+def edit_audio_metadata(input_file: str, data: dict):
+    if not input_file or not os.path.exists(input_file):
+        raise FileNotFoundError(f"Input file not found: {input_file}")
+    if not data:
+        raise ValueError("No metadata provided.")
+
+    ext = os.path.splitext(input_file)[1].lstrip(".").lower()
+    if ext not in tag_map:
+        raise ValueError(f"Unsupported format: {ext}")
+
+    mapping = tag_map[ext]
+    audio = mapping["handler"](input_file)
+
+    tags = audio.tags if ext == "m4a" else audio
+    if tags is None and ext == "m4a":
+        audio.add_tags()
+        tags = audio.tags
+
+    artists = data.get("artists")
+    if artists and isinstance(artists, list):
+        artist_str = ", ".join(artists)
+        tags[mapping["artist"]] = artist_str
+
+        # Specific fix for MP3: Set albumartist to match for clean sorting in music players
+        if ext == "mp3":
+            tags["albumartist"] = artist_str
+
+    # 4. Update Other Fields
+    # Mapping our generic 'data' keys to format-specific 'tag' keys
+    field_mapping = {
+        "title": mapping["title"],
+        "album": mapping["album"],
+        "release": mapping["date"]
+    }
+
+    for data_key, tag_key in field_mapping.items():
+        val = data.get(data_key)
+        if val is not None:
+            tags[tag_key] = str(val)
+
+    # 5. Save
+    # EasyID3 needs a specific version for max hardware compatibility (v2.3)
+    if ext == "mp3":
+        audio.save(v2_version=3)
+    else:
+        audio.save()
+
+    return data
 
 def spotify_get_initial(link):
     try:
@@ -140,6 +246,7 @@ def spotify_get_initial(link):
             return_dict["artists"] = [i.get("name", "Unknown artist") for i in
                                      track_data.get("artists")] if track_data.get(
                 "artists") is not None else ["Unknown artist"]
+            return_dict["duration_seconds"] = str(track_data.get("duration_ms", 0) // 1000)
             return_dict["release"] = track_data["album"].get("release_date", None)
             return_dict["release"] = return_dict["release"].split("-")[0] if return_dict["release"] else None
             return_dict["thumbnail"] = track_data["album"]["images"][0].get("url", None)
@@ -289,6 +396,31 @@ def download_youtube(youtube_id):
 
 # A wrapper function for all the download functions
 
-def download_single(song_dict:dict):
-    pass
+def download_single(song_dict:dict,folder_name:str = None):
+    # Download initial file from service
+    if song_dict["type"] == "youtube":
+        result = download_youtube(song_dict["youtube_id"])
+        song_dict["album"] = result["album"]
+        song_dict["release"] = result["release"]
+        music_filename = result["file_path"]
+    if song_dict["type"] == "spotify":
+        music_filename = download_spotify(song_dict)
+
+    # Figure out folder name
+
+    with open("config.json","r") as f:
+        config = json.load(f)
+
+    if folder_name is None:output_folder = config["path"]
+    else:output_folder = os.path.join(config["path"], folder_name)
+
+    templater_data = {"title": song_dict["title"],"artist":song_dict["artists"].join(","),"album":song_dict["album"],"year":song_dict["release"],"length":song_dict["duration_seconds"],"platform":song_dict["type"],"track_number": song_dict["track_number"]}
+    final_filename = template_decoder(config["filename_template"], data=templater_data)
+
+    ffmpeg_out = transcode_audio(music_filename, output_folder,final_filename,quality_preset=config["quality"])
+
+
+
+
+
 
