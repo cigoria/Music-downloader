@@ -84,7 +84,9 @@ class MusicDownloaderApp(App):
                     yield ProgressBar(total=100, show_eta=True, id="overall_progress")
                 yield DataTable(id="queue_table")
             with TabPane("Detailed Log", id="tab_log"):
-                yield Button("Copy Log to Clipboard", id="btn_copy_log", classes="settings_field")
+                with Horizontal(classes="controls"):
+                    yield Button("Copy Log to Clipboard", id="btn_copy_log")
+                    yield Button("Clear Log", id="btn_clear_log", variant="error")
                 yield RichLog(id="full_log", markup=True)
             with TabPane("Settings", id="tab_settings"):
                 yield Label("Download Root Folder:", classes="settings_field")
@@ -110,6 +112,7 @@ class MusicDownloaderApp(App):
         table.cursor_type = "row"
         table.add_columns("ID", "Status", "Name", "Folder")
         self.query_one("#btn_copy_log").display = self.cfg_dev_mode
+        self.query_one("#btn_clear_log").display = self.cfg_dev_mode
         self.query_one("#lbl_template").display = self.cfg_dev_mode
         self.query_one("#template").display = self.cfg_dev_mode
         self.log_msg("Application started.", "SYSTEM")
@@ -144,6 +147,7 @@ class MusicDownloaderApp(App):
     def on_switch_changed(self, event: Switch.Changed):
         if event.switch.id == "switch_dev":
             self.query_one("#btn_copy_log").display = event.value
+            self.query_one("#btn_clear_log").display = event.value
             self.query_one("#lbl_template").display = event.value
             self.query_one("#template").display = event.value
 
@@ -156,6 +160,7 @@ class MusicDownloaderApp(App):
         elif btn_id == "btn_clear": self.clear_queue_list()
         elif btn_id == "btn_save": self.save_settings()
         elif btn_id == "btn_copy_log": self.copy_log_to_clipboard()
+        elif btn_id == "btn_clear_log": self.clear_log()
 
     def load_settings(self):
         if os.path.exists(CONFIG_FILE):
@@ -205,6 +210,11 @@ class MusicDownloaderApp(App):
             self.notify("Please install 'pyperclip' module (pip install pyperclip)", severity="error")
         except Exception as e:
             self.notify(f"Clipboard error: {escape(str(e))}", severity="error")
+
+    def clear_log(self):
+        self.log_history.clear()
+        self.query_one("#full_log", RichLog).clear()
+        self.notify("Log cleared!")
 
     def log_msg(self, message, level="INFO"):
         ts = datetime.datetime.now().strftime("%H:%M:%S")
