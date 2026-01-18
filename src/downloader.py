@@ -122,12 +122,11 @@ def transcode_audio(input_file: str, output_path: str, filename: str,
         return output_file
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"FFmpeg process failed: {e.stderr}")
-
-
 def edit_audio_metadata(input_file: str, data: dict):
     if not input_file or not os.path.exists(input_file):
         raise FileNotFoundError(f"Input file not found: {input_file}")
-    if not data:
+
+    if not isinstance(data, dict) or not data:
         raise ValueError("No metadata provided.")
 
     ext = os.path.splitext(input_file)[1].lstrip(".").lower()
@@ -137,33 +136,58 @@ def edit_audio_metadata(input_file: str, data: dict):
     mapping = tag_map[ext]
     audio = mapping["handler"](input_file)
 
-    tags = audio.tags if ext == "m4a" else audio
-    if tags is None and ext == "m4a":
-        audio.add_tags()
+
+    if ext == "m4a":
+        if audio.tags is None:
+            audio.add_tags()
         tags = audio.tags
+    else:
+        tags = audio
 
     artists = data.get("artists")
-    if artists and isinstance(artists, list):
+    if isinstance(artists, list) and artists:
         artist_str = ", ".join(artists)
-        tags[mapping["artist"]] = artist_str
 
-        if ext == "mp3":
-            tags["albumartist"] = artist_str
+        if ext == "m4a":
+            tags[mapping["artist"]] = [artist_str]
+        else:
+            tags[mapping["artist"]] = artist_str
+            if ext == "mp3":
+                tags["TPE2"] = artist_str
 
     field_mapping = {
         "title": mapping.get("title"),
         "album": mapping.get("album"),
         "year": mapping.get("date"),
-        "track_number": mapping.get("track")
     }
 
     for data_key, tag_key in field_mapping.items():
-        if tag_key is None:
+        if not tag_key:
             continue
 
         val = data.get(data_key)
-        if val is not None:
+        if val is None:
+            continue
+
+        if ext == "m4a":
+            tags[tag_key] = [str(val)]
+        else:
             tags[tag_key] = str(val)
+
+    track = data.get("track_number")
+    if track is not None:
+        track = str(track)
+
+        if ext == "m4a":
+            if "/" in track:
+                t, total = track.split("/", 1)
+            else:
+                t = track
+                total = "1"
+
+            tags[mapping["track"]] = [(int(t), int(total))]
+        else:
+            tags[mapping["track"]] = track
 
     if ext == "mp3":
         audio.save(v2_version=3)
@@ -469,7 +493,7 @@ def download_single(song_dict:dict,folder_name:str = None, callback=None):
         song_dict["album"] = result["album"]
         song_dict["release"] = result["release"]
         song_dict["duration_seconds"] = result["length"]
-        id = song_dict["id"]
+        id = result["id"]
         music_filename = result["file_path"]
     if song_dict["type"] == "spotify":
         music_filename, id = download_spotify(song_dict)

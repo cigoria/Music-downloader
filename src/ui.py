@@ -390,7 +390,7 @@ class MusicDownloaderApp(App):
                 download_single(song_dict=self.download_queue[queue_num],callback=callback)
             except Exception as e:
                 self.log_msg(f"Download failed: {e}", "ERROR")
-                self.change_state("error", queue_num, queue_sub_num)
+                self.change_state("error", queue_num, None)
                 raise e
 
     def start_downloads(self):
