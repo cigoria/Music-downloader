@@ -93,7 +93,7 @@ def transcode_audio(input_file: str, output_path: str, filename: str,
     bitrate = settings["bitrate"]
     codec = settings["codec"]
 
-    clean_filename = "".join([c for c in filename if c.isalnum() or c in (' ', '.', '_')]).rstrip()
+    clean_filename = "".join([c for c in filename if c.isalnum() or c in (' ', '.', '_', '-')]).rstrip()
     output_file = os.path.join(output_path, f"{clean_filename}.{output_ext}")
 
     if os.path.exists(output_file) and not overwrite:
@@ -115,10 +115,10 @@ def transcode_audio(input_file: str, output_path: str, filename: str,
         command.append('-n')
     command.append(output_file)
     try:
-        subprocess.run(command, check=True)
+        subprocess.run(command, check=True, capture_output=True, text=True)
         return output_file
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"FFmpeg process failed: {e}")
+        raise RuntimeError(f"FFmpeg process failed: {e.stderr}")
 
 
 def edit_audio_metadata(input_file: str, data: dict):
@@ -348,6 +348,7 @@ def youtube_get_initial(link):
                 return_dict["album"] = "Unknown album"
                 return_dict["artists"] = data["videoDetails"].get("author", "Unknown artist").split("&")
                 return_dict["release"] = None
+                return_dict["duration_seconds"] = data["videoDetails"].get("lengthSeconds", 0)
                 return_dict["thumbnail"] = data["videoDetails"]["thumbnail"]["thumbnails"][-1].get("url", None)
                 return_dict["track_number"] = 1
                 return_dict["status"] = "waiting"
@@ -469,6 +470,7 @@ def download_single(song_dict:dict,folder_name:str = None, callback=None):
         result = download_youtube(song_dict["youtube_id"])
         song_dict["album"] = result["album"]
         song_dict["release"] = result["release"]
+        song_dict["duration_seconds"] = result["length"]
         music_filename = result["file_path"]
     if song_dict["type"] == "spotify":
         music_filename = download_spotify(song_dict)
@@ -483,7 +485,7 @@ def download_single(song_dict:dict,folder_name:str = None, callback=None):
         output_folder = os.path.join(config["path"], folder_name)
         os.makedirs(output_folder, exist_ok=True)
     if callback: callback("transcoding")
-    templater_data = {"title": song_dict["title"],"artist":", ".join(song_dict["artists"]),"album":song_dict["album"],"year":song_dict["release"],"length":song_dict["duration_seconds"],"platform":song_dict["type"],"track_number": int(song_dict["track_number"])}
+    templater_data = {"title": song_dict["title"],"artist":", ".join(song_dict["artists"]),"artists": song_dict["artists"],"album":song_dict["album"],"year":song_dict["release"],"length":song_dict["duration_seconds"],"platform":song_dict["type"],"track_number": int(song_dict["track_number"])}
     final_filename = template_decoder(config["filename_template"], data=templater_data)
     # Transcode
     ffmpeg_out = transcode_audio(music_filename, output_folder,final_filename,quality_preset=config["quality"])
